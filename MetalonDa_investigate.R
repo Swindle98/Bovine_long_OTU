@@ -2,44 +2,106 @@ library(MetaLonDA)
 library(readr)
 library(dplyr)
 
+
+
+# Data import functions
+
+taxprofiler.output.import <- function (tsv){
+  #Imports files that have come out of taxprofiler and sets the row names to the species name or taxonomy_id
+  #and removes the name and taxonomy_id columns. (Prefering species name over taxonomy_id)
+  #returns dataframe
+  
+  df.table <- as.data.frame(readr::read_tsv(tsv))
+  
+  if ('name' %in% colnames(df.table)){
+    # If the file contains a column with the name 'name' it sets the row names to the species names
+    # and removes the name and taxonomy_id columns.
+    
+    print("[info] setting row names to species names")
+    df.table <- df.table[!is.na(df.table$name),]
+    rownames(df.table) <- df.table$name
+    df.table$name <- NULL
+    df.table$taxonomy_id <- NULL
+  }
+  else if ('taxonomy_id' %in% colnames(df.table)){
+    print("[info] setting rownames to taxonomy_id")
+    rownames(df.table) <- df.table$taxonomy_id
+    df.table$taxonomy_id <- NULL
+  }
+  else{
+    stop("The file does not contain a column with the name 'name' or 'taxonomy_id'")
+  }
+  return(df.table)
+}
+  
+
+
 #Load data
-Bracken.table <- as.data.frame(readr::read_tsv("./bracken_db1.tsv"))
-rownames(Bracken.table) <- Bracken.table$taxonomy_id
-Bracken.table$"taxonomy_id" <- NULL
+Bracken.table <- taxprofiler.output.import("./data/bracken_db1.tsv")
+mOTU.table <- taxprofiler.output.import("./data/motus_db_mOTU.tsv")
 meta.table <- read.csv("./data/3in1FromMetadata.csv")
 long.meta <- subset(meta.table, Study == "Longitudinal ")
 
 
 # get vectors functions
 
+data.frame.filter <- function(count.table, meta.table, groups){
+  
+  group.1 = groups[1]
+  group.2 = groups[2]
+  
+  #Get the labIDs for the groups of interest
+  meta.table.for.groups.of.interest <- meta.table[meta.table$Corral.ID %in% c(group.1, group.2),]
+  LabIDs <- meta.table.for.groups.of.interest$LabID
+  desired.col.names <- c()
+  
+  #Filter the count table to only include the samples from the groups of interest
+  for (LabID in LabIDs){
+    print(LabID)
+    column <- grep(LabID, colnames(count.table))
+    print(column)
+    desired.col.names <- c(desired.col.names, column)
+  }
+  return(count.table[,desired.col.names])
+  
+}
+
+
 count.vector <- function(sample.data){
+  #Helper function that counts the number of items in a vector.
+  #Used to keep code readable. 
   return(length(sample.data))
 }
 
 
-
-get.group <- function(meta.table, LabID){
+get.group <- function(meta.table, LabID, groups){
+  group.1 = groups[1]
+  group.2 = groups[2]
   group <- meta.table[LabID, "Corral.ID"]
   print(class(group))
-  if  (group %in% c("20", "21")){
-    return("study")
+  if  (group %in% c(group.1)){
+    return(group.1)
   }
+  
+  else if (group %in% c(group.2)){
+      return(group.2)
+  }
+
   else{
-    return("control")
+    stop("More than the two desired groups are present in the metadata table")
   }
 }
 
 
-
-
-get.vectors <- function(count.table, meta.table, count.index.columns=1){
+get.vectors <- function(count.table, meta.table, groups){
+  # !!! Currently only works for taxprofiler outputs !!!
   
   #print(count.table)
   rownames(meta.table) <- meta.table$LabID # sets the index to == LabID value for that row
   meta.table$"LabID" <- NULL # removes the LabID column
   
   samples <- colnames(count.table) # gets the column names of the count table
-  #samples <- samples[-count.index.columns] #drops the header column for the taxonomy ID default is 1
+  
   print(count.vector(samples))
   
   ID <- group <- timepoints <- c() # creates empty vectors for group and timepoints
@@ -52,7 +114,7 @@ get.vectors <- function(count.table, meta.table, count.index.columns=1){
     
     print(sample)
     LabID <- sub(".*-(L\\d+)_.*", "\\1", sample)
-    group <- c(group, get.group(meta.table, LabID))
+    group <- c(group, get.group(meta.table, LabID, groups))
     timepoints <- c(timepoints, meta.table[LabID, "Day"])
     ID <- c(ID, paste0("c", meta.table[LabID, "Corral.ID"]))
   }
@@ -60,30 +122,38 @@ get.vectors <- function(count.table, meta.table, count.index.columns=1){
 }
 
 
-# executing the get vectors functions 
-
-vectors <- get.vectors(Bracken.table, long.meta)
-print(vectors$ID.vector)
-print(count.vector(vectors$ID.vector))
-print(vectors$group.vector)
-print(count.vector(vectors$group.vector))
-print(vectors$timepoint.vector)
-print(count.vector(vectors$timepoint.vector))
-
+get.vector.stats <- function(count, group, time, ID){
+  print(paste0("Count samples: ", ncol(count)))
+  print(paste0("Group: ", count.vector(group)))
+  print(paste0("Time: ", count.vector(time)))
+  print(paste0("ID: ", count.vector(ID)))
+}
 
 # running MetaLonDA
 
-count = Bracken.table
+group.1 <- "20"
+group.2 <- "21"
+groups <- c(group.1, group.2)
+
+count = mOTU.table
+
+
+group.filtered.count <- data.frame.filter(count, long.meta, groups)
+
+
+vectors = get.vectors(group.filtered.count, long.meta, groups)
 group = vectors$group.vector
 time = vectors$timepoint.vector
 ID = vectors$ID.vector
 
+get.vector.stats(group.filtered.count, group, time, ID)
 
 result <- metalondaAll(
   Count = count, 
   Group = group, 
   Time = time, 
   ID = ID, 
+  parall = TRUE,
   n.perm = 1000,
   fit.method = "nbinomial",
   pvalue.threshold = 0.05,
