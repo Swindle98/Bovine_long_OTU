@@ -159,7 +159,7 @@ ID = vectors$ID.vector
 get.vector.stats(group.filtered.count, group, time, ID)
 
 result <- metalondaAll(
-  Count = count, 
+  Count = group.filtered.count, 
   Group = group, 
   Time = time, 
   ID = ID, 
