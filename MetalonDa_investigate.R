@@ -2,10 +2,43 @@ library(MetaLonDA)
 library(readr)
 library(dplyr)
 
+
+
+# Data import functions
+
+taxprofiler.output.import <- function (tsv){
+  #Imports files that have come out of taxprofiler and sets the row names to the species name or taxonomy_id
+  #and removes the name and taxonomy_id columns. (Prefering species name over taxonomy_id)
+  #returns dataframe
+  
+  df.table <- as.data.frame(readr::read_tsv(tsv))
+  
+  if ('name' %in% colnames(df.table)){
+    # If the file contains a column with the name 'name' it sets the row names to the species names
+    # and removes the name and taxonomy_id columns.
+    
+    print("[info] setting row names to species names")
+    df.table <- df.table[!is.na(df.table$name),]
+    rownames(df.table) <- df.table$name
+    df.table$name <- NULL
+    df.table$taxonomy_id <- NULL
+  }
+  else if ('taxonomy_id' %in% colnames(df.table)){
+    print("[info] setting rownames to taxonomy_id")
+    rownames(df.table) <- df.table$taxonomy_id
+    df.table$taxonomy_id <- NULL
+  }
+  else{
+    stop("The file does not contain a column with the name 'name' or 'taxonomy_id'")
+  }
+  return(df.table)
+}
+  
+
+
 #Load data
-Bracken.table <- as.data.frame(readr::read_tsv("./bracken_db1.tsv"))
-rownames(Bracken.table) <- Bracken.table$taxonomy_id
-Bracken.table$"taxonomy_id" <- NULL
+Bracken.table <- taxprofiler.output.import("./data/bracken_db1.tsv")
+mOTU.table <- taxprofiler.output.import("./data/motus_db_mOTU.tsv")
 meta.table <- read.csv("./data/3in1FromMetadata.csv")
 long.meta <- subset(meta.table, Study == "Longitudinal ")
 
@@ -13,9 +46,10 @@ long.meta <- subset(meta.table, Study == "Longitudinal ")
 # get vectors functions
 
 count.vector <- function(sample.data){
+  #Helper function that counts the number of items in a vector.
+  #Used to keep code readable. 
   return(length(sample.data))
 }
-
 
 
 get.group <- function(meta.table, LabID){
@@ -28,8 +62,6 @@ get.group <- function(meta.table, LabID){
     return("control")
   }
 }
-
-
 
 
 get.vectors <- function(count.table, meta.table, count.index.columns=1){
