@@ -35,12 +35,13 @@ taxprofiler.output.import <- function (tsv){
 }
   
 
-
-#Load data
-Bracken.table <- taxprofiler.output.import("./data/bracken_db1.tsv")
-mOTU.table <- taxprofiler.output.import("./data/motus_db_mOTU.tsv")
-meta.table <- read.csv("./data/3in1FromMetadata.csv")
-long.meta <- subset(meta.table, Study == "Longitudinal ")
+filter.num.features <- function(count.table, top.x.features){
+  #Filters the count table to only include the top x features
+  #returns dataframe
+  
+  print("[info] filtering count table to only include the top x features")
+  return(count.table[order(rowSums(count.table), decreasing = TRUE)[1:top.x.features],])
+}
 
 
 # get vectors functions
@@ -129,14 +130,23 @@ get.vector.stats <- function(count, group, time, ID){
   print(paste0("ID: ", count.vector(ID)))
 }
 
+#Load data
+Bracken.table <- taxprofiler.output.import("./data/bracken_db1.tsv")
+mOTU.table <- taxprofiler.output.import("./data/motus_db_mOTU.tsv")
+meta.table <- read.csv("./data/3in1FromMetadata.csv")
+long.meta <- subset(meta.table, Study == "Longitudinal ")
+
+
 # running MetaLonDA
+
 
 group.1 <- "20"
 group.2 <- "21"
 groups <- c(group.1, group.2)
 
 count = mOTU.table
-
+top.x.features <- 250 # Number of top features to be selected taxprofiler output tables are ranked by counts.
+count <- filter.num.features(count, top.x.features) 
 
 group.filtered.count <- data.frame.filter(count, long.meta, groups)
 
